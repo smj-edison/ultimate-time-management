@@ -15,14 +15,19 @@ where Conn: RequestConnection + ?Sized {
         return Ok(None);
     }
     
-    let str = if window_prop.value[(window_prop.length - 1) as usize] == 0x00 {
-        String::from(CStr::from_bytes_with_nul(&window_prop.value)?.to_str()?.clone())
+    let converted_str: String = window_prop.value.iter().map(|&x| x as char).collect();
+
+    // deal with null terminators (for some reason they only sometimes show?)
+    let possibly_terminator_index = converted_str.find('\0');
+
+    let str_no_terminator = if let Some(terminator_index) = possibly_terminator_index {
+        &converted_str[0..terminator_index]
     } else {
-        String::from(window_prop.value.iter().map(|&x| x as char))
-    }
+        &converted_str
+    };
 
 
-    Ok(Some(str))
+    Ok(Some(String::from(str_no_terminator)))
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
