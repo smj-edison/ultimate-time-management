@@ -1,86 +1,16 @@
-use libc::c_char;
-use std::ffi::CStr;
 use std::iter::repeat;
 use std::str;
 
 use x11rb::connection::{Connection, RequestConnection};
 use x11rb::protocol::xproto::AtomEnum;
 use x11rb::protocol::xproto::{
-    get_geometry, get_property, list_properties, query_tree, Atom, Window,
-    get_atom_name, GetAtomNameReply
+    get_geometry, list_properties, query_tree, Window,
+    get_atom_name
 };
 use x11rb::rust_connection::RustConnection;
 
-fn parse_c_string(chars: &Vec<u8>) -> String {
-    let converted_str: String = chars.iter().map(|&x| x as char).collect();
-
-    // deal with null terminators (for some reason they only sometimes show?)
-    let possibly_terminator_index = converted_str.find('\0');
-
-    let str_no_terminator = if let Some(terminator_index) = possibly_terminator_index {
-        &converted_str[0..terminator_index]
-    } else {
-        &converted_str
-    };
-
-    String::from(str_no_terminator)
-}
-
-fn get_window_value<Conn, A>(
-    conn: &Conn,
-    window: Window,
-    value_to_get: A,
-    value_type: u32,
-    value_length: u32
-) -> Result<Option<Vec<u8>>, Box<dyn std::error::Error>>
-where
-    Conn: RequestConnection + ?Sized,
-    A: Into<Atom>
-{
-    let window_prop = get_property(
-        conn,
-        false,
-        window,
-        value_to_get,
-        value_type,
-        0,
-        value_length,
-    )?
-    .reply()?;
-
-    if window_prop.type_ != u32::from(value_type) {
-        return Ok(None);
-    }
-
-    Ok(Some(window_prop.value))
-}
-
-fn get_window_string_ascii<Conn, A>(
-    conn: &Conn,
-    window: Window,
-    string_to_get: A,
-) -> Result<Option<String>, Box<dyn std::error::Error>>
-where
-    Conn: RequestConnection + ?Sized,
-    A: Into<Atom>
-{
-    let window_prop = get_property(
-        conn,
-        false,
-        window,
-        string_to_get,
-        AtomEnum::STRING,
-        0,
-        1024,
-    )?
-    .reply()?;
-
-    if window_prop.type_ != u32::from(AtomEnum::STRING) {
-        return Ok(None);
-    }
-
-    Ok(Some(parse_c_string(&window_prop.value)))
-}
+use desktop::x11_util::{get_window_string_ascii, get_window_value, parse_c_string};
+use desktop::atom_helper::build_atom_map;
 
 fn debug_window_info<Conn>(
     conn: &Conn,
@@ -145,19 +75,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let screen = &conn.setup().roots[screen_num];
 
-    for atom in 0..1000 {
-        let name_raw = match get_atom_name(&conn, atom) {
-            Ok(result) =>  match result.reply() {
-                Ok(result) => result.name,
-                Err(_) => continue
-            },
-            Err(_) => continue
-        };
+    let atoms = build_atom_map(&conn, 2048); // yes, 2048 is incredibly arbitrary, but yes, it works
+    let net_wm_name = atoms.get(&"_NET_WM_NAME".to_string()).unwrap();
+    let utf8_string = atoms.get(&"UTF8_STRING".to_string()).unwrap();
 
-        let name = String::from(atom.to_string()) + ": " + &parse_c_string(&name_raw);
-
-        //println!("{}", name);
-    }
+    println!("{:?}", utf8_string);
 
     debug_window_info(&conn, screen.root, None)?;
 
